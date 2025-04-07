@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+    networks:
+      - app-network
+
+  redis:
+    image: redis:6.2-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A app.worker worker --loglevel=info
+    environment:
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+    volumes:
+      - .:/app
+    networks:
+      - app-network
+
+  flower:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command: celery -A app.worker flower
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_HOST=redis
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery_worker
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
