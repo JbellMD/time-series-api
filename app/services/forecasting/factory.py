@@ -1,50 +1,71 @@
-from typing import Dict, Any, Union, List, Optional
-from app.models.forecasting import ForecastingModel, Frequency
-from app.services.forecasting.prophet_service import ProphetService
-from app.services.forecasting.arima_service import ARIMAService
+from typing import Dict, Any, List, Union, Optional
+import logging
+
+from app.services.forecasting.prophet_service import ProphetForecastingService
+from app.services.forecasting.arima_service import ARIMAForecastingService
+from app.services.forecasting.lstm_service import LSTMForecastingService
+from app.models.forecasting import ForecastingModel
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class ForecastingFactory:
-    """Factory class to create appropriate forecasting service based on model type"""
+    """Factory for creating forecasting services"""
     
     @staticmethod
-    def get_service(model_type: ForecastingModel):
-        """Get the appropriate forecasting service"""
-        if model_type == ForecastingModel.PROPHET:
-            return ProphetService()
-        elif model_type in [ForecastingModel.ARIMA, ForecastingModel.SARIMA]:
-            return ARIMAService()
-        elif model_type == ForecastingModel.EXPONENTIAL_SMOOTHING:
-            # TODO: Implement Exponential Smoothing service
-            raise NotImplementedError("Exponential Smoothing model not yet implemented")
-        elif model_type == ForecastingModel.LSTM:
-            # TODO: Implement LSTM service
-            raise NotImplementedError("LSTM model not yet implemented")
+    def create_forecasting_service(model_type: str):
+        """Create a forecasting service based on model type"""
+        if model_type.lower() == "prophet" or model_type == ForecastingModel.PROPHET:
+            return ProphetForecastingService()
+        elif model_type.lower() == "arima" or model_type in [ForecastingModel.ARIMA, ForecastingModel.SARIMA]:
+            return ARIMAForecastingService()
+        elif model_type.lower() == "lstm" or model_type == ForecastingModel.LSTM:
+            return LSTMForecastingService()
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
     
     @staticmethod
     def forecast(
         data: Union[List[float], List[Dict[str, Any]]],
-        model_type: ForecastingModel,
+        model_type: str,
         periods: int,
-        frequency: Frequency,
+        frequency: str,
         confidence_interval: float = 0.95,
         seasonal_periods: Optional[int] = None,
         include_history: bool = False,
         params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Generate forecast using the specified model"""
-        # Get appropriate service
-        service = ForecastingFactory.get_service(model_type)
+        """Generate forecasts using the specified model"""
+        logger.info(f"Creating forecast with model {model_type} for {periods} periods")
+        
+        # Create forecasting service
+        service = ForecastingFactory.create_forecasting_service(model_type)
         
         # Train model
-        service.train(data, frequency, seasonal_periods, params)
+        service.train(data, frequency)
         
         # Generate forecast
-        service.predict(periods, frequency, confidence_interval)
+        forecast = service.predict(
+            periods=periods,
+            confidence_interval=confidence_interval
+        )
         
-        # Format results
-        result = service.format_results(include_history)
-        result['model'] = model_type
+        return forecast
+    
+    @staticmethod
+    def decompose(
+        data: Union[List[float], List[Dict[str, Any]]],
+        model_type: str,
+        frequency: str
+    ) -> Dict[str, Any]:
+        """Decompose time series into trend, seasonal, and residual components"""
+        logger.info(f"Decomposing time series with model {model_type}")
         
-        return result
+        # Currently only Prophet supports decomposition
+        if model_type.lower() == "prophet" or model_type == ForecastingModel.PROPHET:
+            service = ProphetForecastingService()
+            service.train(data, frequency)
+            return service.decompose()
+        else:
+            raise ValueError(f"Decomposition not supported for model type: {model_type}")
